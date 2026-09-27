@@ -48,6 +48,7 @@ jobs:
                   ShellVariable      = 'UV_VERSION'
                   PowerShellVariable = 'UvVersion'
                   PythonPackage      = 'uv'
+                  ContainerImage     = 'ghcr.io/astral-sh/uv'
               }
               @{
                   Name               = 'terraform-docs'
@@ -84,6 +85,7 @@ jobs:
                       -PowerShellVariable $tool.PowerShellVariable `
                       -Files $candidateFiles `
                       -PythonPackage $tool.PythonPackage `
+                      -ContainerImage $tool.ContainerImage
                       -RepoRoot $PWD
               )
               if ($assignments.Count -eq 0) {

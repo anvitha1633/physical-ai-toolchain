@@ -17,8 +17,12 @@ Describe 'Get-PinnedToolVersionAssignments' -Tag 'Unit' {
             PowerShellVariable = 'UvVersion'
             RepoRoot           = $script:RepoRoot
             PythonPackage      = 'uv'
+            ContainerImage     = 'ghcr.io/astral-sh/uv'
         }
     }
+
+    $script:semanticVersionPattern =
+    '(?<Version>[0-9]+(?:\.[0-9]+)+(?:[-+][0-9A-Za-z.-]+)?)'
 
     It 'Returns every unique file and version pair' {
         @'
@@ -48,6 +52,141 @@ $UvVersion = '0.12.8'
         $pins.Count | Should -Be 1
         $pins[0].Version | Should -Be '0.12.8'
     }
+
+    It 'Extracts version and digest from pinned Docker uv image' {
+    @'
+FROM ghcr.io/astral-sh/uv:0.12.8@sha256:d1cbaeadc234fe19c0d93daabcf5e98738cd93c6d1dd4918ef6aa30735feb23a
+'@ | Set-Content -LiteralPath (Join-Path $script:RepoRoot 'Dockerfile')
+
+    $content = Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'Dockerfile')
+
+    $pins = Get-DockerVersionAssignments `
+        -Content $content `
+        -SemanticVersionPattern $semanticVersionPattern `
+        -ContainerImage 'ghcr.io/astral-sh/uv' `
+        -File 'Dockerfile'
+
+    $pins.Count | Should -Be 1
+    $pins[0].Version | Should -Be '0.12.8'
+    $pins[0].Digest | Should -Be 'sha256:d1cbaeadc234fe19c0d93daabcf5e98738cd93c6d1dd4918ef6aa30735feb23a'
+}
+
+It 'Ignores unrelated Docker images' {
+    @'
+FROM python:3.12
+'@ | Set-Content -LiteralPath (Join-Path $script:RepoRoot 'Dockerfile')
+
+    $content = Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'Dockerfile')
+
+    $pins = Get-DockerVersionAssignments `
+        -Content $content `
+        -SemanticVersionPattern $semanticVersionPattern `
+        -ContainerImage 'ghcr.io/astral-sh/uv' `
+        -File 'Dockerfile'
+
+    $pins.Count | Should -Be 0
+}
+
+It 'Fails when Docker uv image is missing a digest' {
+    @'
+FROM ghcr.io/astral-sh/uv:0.12.8
+'@ | Set-Content -LiteralPath (Join-Path $script:RepoRoot 'Dockerfile')
+
+    $content = Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'Dockerfile')
+
+    {
+        Get-DockerVersionAssignments `
+            -Content $content `
+            -SemanticVersionPattern $semanticVersionPattern `
+            -ContainerImage 'ghcr.io/astral-sh/uv' `
+            -File 'Dockerfile'
+    } | Should -Throw '*not pinned*'
+}
+
+It 'Fails when Docker uv image uses a dynamic tag' {
+    @'
+FROM ghcr.io/astral-sh/uv:${UV_VERSION}
+'@ | Set-Content -LiteralPath (Join-Path $script:RepoRoot 'Dockerfile')
+
+    $content = Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'Dockerfile')
+
+    {
+        Get-DockerVersionAssignments `
+            -Content $content `
+            -SemanticVersionPattern $semanticVersionPattern `
+            -ContainerImage 'ghcr.io/astral-sh/uv' `
+            -File 'Dockerfile'
+    } | Should -Throw '*not pinned*'
+}
+
+It 'Fails when Docker uv image uses latest tag' {
+    @'
+FROM ghcr.io/astral-sh/uv:latest@sha256:d1cbaeadc234fe19c0d93daabcf5e98738cd93c6d1dd4918ef6aa30735feb23a
+'@ | Set-Content -LiteralPath (Join-Path $script:RepoRoot 'Dockerfile')
+
+    $content = Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'Dockerfile')
+
+    {
+        Get-DockerVersionAssignments `
+            -Content $content `
+            -SemanticVersionPattern $semanticVersionPattern `
+            -ContainerImage 'ghcr.io/astral-sh/uv' `
+            -File 'Dockerfile'
+    } | Should -Throw '*not pinned*'
+}
+
+It 'Fails when Docker uv image has an invalid digest' {
+    @'
+FROM ghcr.io/astral-sh/uv:0.12.8@sha256:not-a-valid-digest
+'@ | Set-Content -LiteralPath (Join-Path $script:RepoRoot 'Dockerfile')
+
+    $content = Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'Dockerfile')
+
+    {
+        Get-DockerVersionAssignments `
+            -Content $content `
+            -SemanticVersionPattern $semanticVersionPattern `
+            -ContainerImage 'ghcr.io/astral-sh/uv' `
+            -File 'Dockerfile'
+    } | Should -Throw '*not pinned*'
+}
+
+It 'Extracts multiple Docker uv image pins' {
+    @'
+FROM ghcr.io/astral-sh/uv:0.12.8@sha256:d1cbaeadc234fe19c0d93daabcf5e98738cd93c6d1dd4918ef6aa30735feb23a
+FROM ghcr.io/astral-sh/uv:0.10.9@sha256:10902f58a1606787602f303954cea099626a4adb02acbac4c69920fe9d278f82
+'@ | Set-Content -LiteralPath (Join-Path $script:RepoRoot 'Dockerfile')
+
+    $content = Get-Content -Raw -LiteralPath (Join-Path $script:RepoRoot 'Dockerfile')
+
+    $pins = Get-DockerVersionAssignments `
+        -Content $content `
+        -SemanticVersionPattern $semanticVersionPattern `
+        -ContainerImage 'ghcr.io/astral-sh/uv' `
+        -File 'Dockerfile'
+
+    $pins.Count | Should -Be 2
+    $pins[0].Version | Should -Be '0.12.8'
+    $pins[1].Version | Should -Be '0.10.9'
+}
+
+It 'Discovers Docker uv pins through the main scanner' {
+    @'
+FROM ghcr.io/astral-sh/uv:0.12.8@sha256:d1cbaeadc234fe19c0d93daabcf5e98738cd93c6d1dd4918ef6aa30735feb23a
+'@ | Set-Content -LiteralPath (Join-Path $script:RepoRoot 'Dockerfile')
+
+    $pins = Get-PinnedToolVersionAssignments `
+        -ShellVariable 'UV_VERSION' `
+        -PowerShellVariable 'UvVersion' `
+        -PythonPackage 'uv' `
+        -ContainerImage 'ghcr.io/astral-sh/uv' `
+        -Files @('Dockerfile') `
+        -RepoRoot $script:RepoRoot
+
+    $pins.Count | Should -Be 1
+    $pins[0].File | Should -Be 'Dockerfile'
+    $pins[0].Version | Should -Be '0.12.8'
+}
 
     It 'Extracts version assignments from pip install command in .sh file' {
     @'
@@ -654,7 +793,41 @@ Describe 'Repository pin discovery' -Tag 'Integration' {
         @($pins.File) | Should -Contain 'infrastructure/setup/optional/isaac-sim-vm/scripts/install-dev-deps.sh'
         @($pins.Version | Sort-Object -Unique).Count | Should -Be 1
     }
+
+    It 'Discovers every uv assignment in the repository with one consistent version' {
+        $repoRoot = git rev-parse --show-toplevel
+        $files = Get-PinCandidateFiles -RepoRoot $repoRoot
+
+        $pins = Get-PinnedToolVersionAssignments `
+            -ShellVariable 'UV_VERSION' `
+            -PowerShellVariable 'UvVersion' `
+            -Files $files `
+            -RepoRoot $repoRoot `
+            -PythonPackage 'uv' `
+            -ContainerImage 'ghcr.io/astral-sh/uv'
+        $expectedFiles = @(
+            "data-management/viewer/backend/Dockerfile"
+            "evaluation/sil/scripts/osmo-lerobot-eval-entry.sh"
+            "infrastructure/setup/optional/isaac-sim-vm/scripts/install-dev-deps.sh"
+            "setup-dev.ps1"
+            "setup-dev.sh"
+            "shared/ci/smoke-import.sh"
+            "training/il/scripts/lerobot-train-osmo-entry.sh"
+            "training/il/scripts/lerobot/azureml-train-entry.sh"
+            "training/il/scripts/lerobot/lerobot-azureml.sh"
+            "training/rl/scripts/setup_isaac_runtime.sh"
+            "workflows/azureml/components/register.yaml"
+            "workflows/azureml/osmo-proxy-job.yaml"
+        )
+        $actualFiles = @($pins.File)
+        $actualFiles = $actualFiles | Sort-Object
+        $expectedFiles = $expectedFiles | Sort-Object
+
+        $actualFiles | Should -Be $expectedFiles
+    }
 }
+
+
 
 Describe 'Get-PinnedToolFreshness' -Tag 'Unit' {
     It 'Rejects an empty assignment set' {
