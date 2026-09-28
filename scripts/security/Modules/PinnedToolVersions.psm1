@@ -798,7 +798,7 @@ function Get-PinJsonVersionAssignments {
     catch {
         throw "Could not parse '$File' as JSON: $($_.Exception.Message)"
     }
-    foreach ($value in Get-PinJsonStringValues -Value $json) {
+    foreach ($value in (Get-PinJsonStringValues -Value $json | Where-Object { $_ -ne '' })) {
         Get-PinShellVersionAssignments `
             -Content $value `
             -ShellVariable $ShellVariable `

@@ -426,6 +426,20 @@ UV_VERSION=$(cat version.txt)
         $pins[0].Version | Should -Be '0.12.8'
     }
 
+    It 'Ignores empty JSON string values' {
+    @'
+{
+    "empty": "",
+    "command": "MODE=ci UV_VERSION=\"0.12.8\" run-tool"
+}
+'@ | Set-Content -LiteralPath (Join-Path $script:RepoRoot 'empty-string.json')
+
+    $pins = Get-PinnedToolVersionAssignments @script:Parameters -Files @('empty-string.json')
+
+    $pins.Count | Should -Be 1
+    $pins[0].Version | Should -Be '0.12.8'
+}
+
     It 'Ignores PowerShell assignments without a configured variable' {
         '$UvVersion = ''0.12.8''' | Set-Content -LiteralPath (Join-Path $script:RepoRoot 'pin.ps1')
 
