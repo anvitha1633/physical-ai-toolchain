@@ -12,8 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
 FROM ghcr.io/astral-sh/uv:0.12.8@sha256:d1cbaeadc234fe19c0d93daabcf5e98738cd93c6d1dd4918ef6aa30735feb23a AS uv
 COPY --from=uv /uv /uvx /bin/
 
-# Copy dependency manifests
-COPY pyproject.toml uv.lock ./
+# Copy dependency manifests and runtime logging configuration
+COPY pyproject.toml uv.lock logging.json ./
 
 # Install production dependencies and runtime feature extras into /app/.venv.
 ENV UV_COMPILE_BYTECODE=1 \
@@ -35,6 +35,7 @@ EXPOSE 8000
 # BACKEND_HOST=0.0.0.0 binds to all interfaces (required in containers)
 ENV BACKEND_HOST=0.0.0.0 \
     BACKEND_PORT=8000 \
+    LOG_LEVEL=info \
     STORAGE_BACKEND=local \
     DATA_DIR=/data \
     DETECTION_MODELS_DIR=/models
@@ -43,4 +44,4 @@ ENV BACKEND_HOST=0.0.0.0 \
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${BACKEND_PORT}/health')"
 
-CMD ["sh", "-c", "uvicorn src.api.main:app --host ${BACKEND_HOST} --port ${BACKEND_PORT}"]
+CMD ["sh", "-c", "uvicorn src.api.main:app --log-config logging.json --log-level ${LOG_LEVEL} --host ${BACKEND_HOST} --port ${BACKEND_PORT}"]
